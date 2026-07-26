@@ -1,0 +1,40 @@
+spring:
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/pdfgen}
+    username: ${SPRING_DATASOURCE_USERNAME:pdfgen}
+    password: ${SPRING_DATASOURCE_PASSWORD:pdfgen}
+    hikari:
+      maximum-pool-size: 50
+  jpa:
+    hibernate:
+      ddl-auto: none
+    open-in-view: false
+  data:
+    redis:
+      host: ${SPRING_REDIS_HOST:localhost}
+      port: ${SPRING_REDIS_PORT:6379}
+      lettuce:
+        pool:
+          max-active: 100
+          max-idle: 20
+          min-idle: 10
+
+pdfgen:
+  queue:
+    max-depth: 100000
+    sync-timeout-ms: 200
+
+server:
+  port: 8080
+  tomcat:
+    threads:
+      max: 800
+      min-spare: 50
+    max-connections: 10000
+    accept-count: 500
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics

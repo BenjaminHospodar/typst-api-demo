@@ -1,0 +1,74 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: pdfgen
+      POSTGRES_USER: pdfgen
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./migrations:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pdfgen"]
+      interval: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+
+  redis:
+    image: redis:7-alpine
+    command: redis-server --maxmemory 512mb --maxmemory-policy allkeys-lru --appendonly yes --requirepass ${REDIS_PASSWORD}
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 5s
+    deploy:
+      resources:
+        limits:
+          memory: 768M
+
+  java-api:
+    build: ./java-api
+    ports:
+      - "8080:8080"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/pdfgen
+      SPRING_DATASOURCE_USERNAME: pdfgen
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD}
+      SPRING_REDIS_HOST: redis
+      SPRING_REDIS_PORT: "6379"
+      SPRING_REDIS_PASSWORD: ${REDIS_PASSWORD}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    deploy:
+      replicas: 2
+      resources:
+        limits:
+          memory: 512M
+
+  rust-compiler:
+    build: ./rust-compiler
+    environment:
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
+      WORKER_THREADS: "4"
+      RUST_LOG: info
+    depends_on:
+      redis:
+        condition: service_healthy
+    deploy:
+      replicas: 4
+      resources:
+        limits:
+          memory: 512M
+
+volumes:
+  postgres_data:
+  redis_data:

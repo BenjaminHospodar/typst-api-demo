@@ -1,0 +1,24 @@
+# Build artifacts
+build/
+target/
+.gradle/
+*.log
+*.class
+*.jar
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker volumes
+postgres_data/
+redis_data/
+
+# Environment
+.env
+.env.*
