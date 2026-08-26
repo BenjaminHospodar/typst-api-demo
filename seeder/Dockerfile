@@ -1,13 +1,11 @@
-FROM postgres:16-alpine
+FROM python:3.12-slim
 
-# Install redis-cli + bash
-RUN apk add --no-cache redis bash curl
+WORKDIR /app
 
-# Copy all templates into the image
-COPY templates/ /templates/
+COPY scripts/requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy the seed script
-COPY seeder/seed.sh /seed.sh
-RUN chmod +x /seed.sh
+COPY scripts/load_env.py .
+COPY scripts/seed_templates.py .
 
-ENTRYPOINT ["/seed.sh"]
+ENTRYPOINT ["python", "/app/seed_templates.py", "--templates-dir", "/templates"]
