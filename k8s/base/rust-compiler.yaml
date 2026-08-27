@@ -1,0 +1,50 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rust-compiler
+  namespace: pdfgen
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: rust-compiler
+  template:
+    metadata:
+      labels:
+        app: rust-compiler
+    spec:
+      containers:
+        - name: rust-compiler
+          image: typst-api-demo/rust-compiler:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: grpc
+              containerPort: 50051
+          env:
+            - name: RUST_LOG
+              value: info
+            - name: GRPC_ADDR
+              value: "0.0.0.0:50051"
+            - name: TYPST_ASSETS_DIR
+              value: /assets
+          resources:
+            limits:
+              memory: 512Mi
+          readinessProbe:
+            tcpSocket:
+              port: 50051
+            initialDelaySeconds: 5
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rust-compiler
+  namespace: pdfgen
+spec:
+  selector:
+    app: rust-compiler
+  ports:
+    - name: grpc
+      port: 50051
+      targetPort: 50051
