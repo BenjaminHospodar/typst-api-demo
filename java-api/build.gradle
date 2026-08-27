@@ -51,8 +51,14 @@ dependencies {
     runtimeOnly 'org.postgresql:postgresql'
 
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
-    testImplementation "io.grpc:grpc-testing:${grpcVersion}"
-    testImplementation "io.grpc:grpc-inprocess:${grpcVersion}"
+}
+
+sourceSets {
+    main {
+        proto {
+            srcDir '../rust-compiler/proto'
+        }
+    }
 }
 
 protobuf {
@@ -72,10 +78,12 @@ protobuf {
 }
 
 tasks.named('processResources') {
+    // Spec lives at repo-root openapi/openapi.yaml. INCLUDE so a leftover
+    // src/main/resources/static/openapi.yaml cannot fail the copy.
+    duplicatesStrategy = DuplicatesStrategy.INCLUDE
     def spec = file("${rootDir}/../openapi/openapi.yaml")
     if (spec.exists()) {
-        from(spec.parent) {
-            include 'openapi.yaml'
+        from(spec) {
             into 'static'
         }
     }

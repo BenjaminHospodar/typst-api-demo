@@ -12,8 +12,8 @@ import com.yourco.pdfgen.grpc.HealthResponse;
 import io.grpc.ManagedChannel;
 import io.grpc.Server;
 import io.grpc.Status;
-import io.grpc.inprocess.InProcessChannelBuilder;
-import io.grpc.inprocess.InProcessServerBuilder;
+import io.grpc.netty.shaded.io.grpc.netty.NettyChannelBuilder;
+import io.grpc.netty.shaded.io.grpc.netty.NettyServerBuilder;
 import io.grpc.stub.StreamObserver;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -37,13 +37,14 @@ class CompilerServiceResilienceTest {
     @BeforeEach
     void setUp() throws IOException {
         fake = new FakeCompileService();
-        String name = InProcessServerBuilder.generateName();
-        server = InProcessServerBuilder.forName(name)
+        server = NettyServerBuilder.forPort(0)
                 .directExecutor()
                 .addService(fake)
                 .build()
                 .start();
-        channel = InProcessChannelBuilder.forName(name).directExecutor().build();
+        channel = NettyChannelBuilder.forAddress("localhost", server.getPort())
+                .usePlaintext()
+                .build();
         compilerService = new CompilerService(
                 channel,
                 TestSupport.properties(),

@@ -26,7 +26,7 @@ paths:
               $ref: '#/components/schemas/GenerateRequest'
             example:
               form: invoice
-              version: "2.1.0"
+              version: "2.0.0"
               fields:
                 name: Acme Corp
                 date: "2024-04-13"

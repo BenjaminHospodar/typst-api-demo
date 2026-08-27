@@ -75,9 +75,9 @@ class Runner:
         bold("1. Health check")
         self.check("GET /actuator/health", "GET", "/actuator/health")
 
-        bold("2. Generate invoice v2.0.0 (sync)")
+        bold("2. Generate invoice v2.0.0 (OpenAPI example)")
         response = self.check(
-            "Generate invoice v2.0.0",
+            "Generate invoice v2.0.0 (OpenAPI example)",
             "POST",
             "/api/v1/generate",
             json_body={
@@ -87,6 +87,7 @@ class Runner:
                     "name": "Acme Corp",
                     "date": "2024-04-13",
                     "text1": "Consulting services",
+                    "text3": "Net 30",
                 },
             },
             expected=(200, 202),
@@ -232,6 +233,24 @@ class Runner:
             "/api/v1/jobs/FAKEID/result",
             expected=(404,),
         )
+
+        bold("12. Broken template (expect 422)")
+        broken = self.check(
+            "Broken template returns 422 or 202",
+            "POST",
+            "/api/v1/generate",
+            json_body={"form": "broken", "version": "1.0.0", "fields": {"name": "x"}},
+            expected=(422, 202),
+        )
+        if broken is not None and broken.status_code == 202:
+            body = broken.json()
+            poll_path = body.get("poll_url") or f"/api/v1/jobs/{body.get('job_id')}/result"
+            self.check(
+                "Broken template poll returns 422",
+                "GET",
+                poll_path,
+                expected=(422, 202),
+            )
 
         print()
         bold("=== Results ===")

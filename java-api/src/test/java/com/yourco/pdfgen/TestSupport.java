@@ -20,7 +20,7 @@ public final class TestSupport {
         return new PdfGenProperties(
                 "test-key",
                 new PdfGenProperties.Compiler("localhost", 50051, 5_000, 1_048_576),
-                new PdfGenProperties.Queue(1000, 500),
+                new PdfGenProperties.Queue(500),
                 new PdfGenProperties.Limits(1_048_576, 200, 64, 8192, 20_971_520),
                 new PdfGenProperties.Rabbit(
                         false,

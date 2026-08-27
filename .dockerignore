@@ -1,0 +1,8 @@
+.git
+**/.gradle
+**/build
+**/target
+**/__pycache__
+**/*.pdf
+.env
+java-api/src/main/resources/static

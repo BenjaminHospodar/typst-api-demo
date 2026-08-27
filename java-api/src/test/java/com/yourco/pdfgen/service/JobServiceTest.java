@@ -26,8 +26,10 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -58,7 +60,6 @@ class JobServiceTest {
         job.setForm("invoice");
         job.setVersion("2.0.0");
         job.setStatus("pending");
-        when(jobRepository.findById("job-1")).thenReturn(Optional.of(job));
         when(jobRepository.save(any(Job.class))).thenAnswer(inv -> inv.getArgument(0));
     }
 
@@ -77,6 +78,7 @@ class JobServiceTest {
 
     @Test
     void compileAndStoreMarksDoneAndPublishesCompiled() throws JsonProcessingException {
+        when(jobRepository.findById("job-1")).thenReturn(Optional.of(job));
         when(templateService.getTemplate("invoice", "2.0.0"))
                 .thenReturn(new TemplateService.CachedTemplate("#set page(paper: \"a4\")", "{}"));
         when(objectMapper.writeValueAsString(any())).thenReturn("{\"name\":\"Acme\"}");
@@ -97,6 +99,7 @@ class JobServiceTest {
 
     @Test
     void compileAndStoreMarksErrorAndPublishesFailed() throws JsonProcessingException {
+        when(jobRepository.findById("job-1")).thenReturn(Optional.of(job));
         when(templateService.getTemplate("invoice", "2.0.0"))
                 .thenReturn(new TemplateService.CachedTemplate("#oops", "{}"));
         when(objectMapper.writeValueAsString(any())).thenReturn("{}");
@@ -110,6 +113,22 @@ class JobServiceTest {
         ArgumentCaptor<DomainEvent> event = ArgumentCaptor.forClass(DomainEvent.class);
         verify(eventPublisher).publish(event.capture());
         assertEquals("job.failed", event.getValue().type());
+    }
+
+    @Test
+    void compileAndStoreDoesNotMarkErrorOnRetryableUnavailable() throws JsonProcessingException {
+        when(jobRepository.findById("job-1")).thenReturn(Optional.of(job));
+        when(templateService.getTemplate("invoice", "2.0.0"))
+                .thenReturn(new TemplateService.CachedTemplate("#ok", "{}"));
+        when(objectMapper.writeValueAsString(any())).thenReturn("{}");
+        when(compilerService.compile(eq("job-1"), any(), any()))
+                .thenThrow(new ServiceUnavailableException("sidecar down", true));
+
+        assertThrows(ServiceUnavailableException.class,
+                () -> jobService.compileAndStore("job-1", "invoice", "2.0.0", Map.of("name", "Acme")));
+
+        assertEquals("compiling", job.getStatus());
+        verify(eventPublisher, never()).publish(argThat(e -> "job.failed".equals(e.type())));
     }
 }
 

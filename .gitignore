@@ -2,6 +2,7 @@
 build/
 target/
 .gradle/
+java-api/src/main/resources/static/
 __pycache__/
 *.pyc
 *.log

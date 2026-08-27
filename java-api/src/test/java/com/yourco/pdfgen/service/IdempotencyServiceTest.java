@@ -11,6 +11,7 @@ import org.springframework.data.redis.core.ValueOperations;
 import java.time.Duration;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
@@ -48,5 +49,14 @@ class IdempotencyServiceTest {
         when(values.get("pdf:idempotency:abc")).thenReturn("job-1");
 
         assertEquals("job-1", service.claim("abc", "job-2"));
+    }
+
+    @Test
+    void claimDoesNotInventAJobIdWhenValueIsMissing() {
+        when(values.setIfAbsent(eq("pdf:idempotency:abc"), eq("job-2"), any(Duration.class)))
+                .thenReturn(false);
+        when(values.get("pdf:idempotency:abc")).thenReturn(null);
+
+        assertThrows(IllegalStateException.class, () -> service.claim("abc", "job-2"));
     }
 }

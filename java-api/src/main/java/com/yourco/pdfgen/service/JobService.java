@@ -81,6 +81,10 @@ public class JobService {
 
         try {
             TemplateService.CachedTemplate template = templateService.getTemplate(form, version);
+            fieldValidator.validateTemplate(template.typSource());
+            fieldValidator.validateFields(fields);
+            fieldValidator.validateAgainstSchema(template.schema(), fields);
+
             String inputsJson;
             try {
                 inputsJson = objectMapper.writeValueAsString(fields);
@@ -112,6 +116,12 @@ public class JobService {
 
             eventPublisher.publish(DomainEvent.compiled(jobId, form, result.compileMs()));
             return result.pdfBytes();
+        } catch (ServiceUnavailableException e) {
+            if (e.isRetryable()) {
+                throw e;
+            }
+            storeFailure(jobId, form, e);
+            throw e;
         } catch (RuntimeException e) {
             storeFailure(jobId, form, e);
             throw e;

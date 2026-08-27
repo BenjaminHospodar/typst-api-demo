@@ -1,6 +1,6 @@
 # Typst PDF Generation Pipeline
 
-Learning-oriented MVP. Java is the HTTP/business API; a stateless Rust gRPC sidecar compiles Typst. **This is not a finished production stack.** The living plan is [`docs/ROADMAP.md`](docs/ROADMAP.md). Phases 0–4 are in-repo (OpenAPI, RabbitMQ, Resilience4j, API key). Kubernetes/Helm and the k6 stress suite are later.
+Learning-oriented MVP. Java is the HTTP/business API; a stateless Rust gRPC sidecar compiles Typst. **This is not a finished production stack.** The living plan is [`docs/ROADMAP.md`](docs/ROADMAP.md). Phases 0–6 are in-repo (OpenAPI, RabbitMQ, Resilience4j, Compose/Kustomize, k6 stress).
 
 ## Quick Start
 
@@ -88,7 +88,7 @@ Field values are JSON, never interpolated into Typst source. Templates bind with
 
 Stdout is JSON (Logstash encoder + Rust `RUST_LOG_FORMAT=json`). Do not treat Rabbit events as a log pipeline.
 
-Default `pdfgen.rabbit.enabled: false` (in-process worker, no broker). Profiles `local` and `prod` turn Rabbit on.
+Default `pdfgen.rabbit.enabled` is false (`PDFGEN_RABBIT_ENABLED`, in-process worker) so tests work without a broker. Compose sets `PDFGEN_RABBIT_ENABLED=true` with profiles `local` / `prod`, so Rabbit is the async job backbone.
 
 ## What compiles in-service
 
@@ -104,6 +104,7 @@ The embedded Typst World still has no package resolver. Server templates do **no
 | `dashboard` 1.0.0 | yes | |
 | `legal` 1.0.0 | likely | No packages; font may fall back |
 | `rrsp` 1.0.0 | yes | cetz/tiaoma replaced with native Typst |
+| `broken` 1.0.0 | seeded; always 422 | Intentional `#panic` for error-path tests |
 | `*/_test_compile.typ` | not seeded | Local CLI fixtures: `typst compile --input data=...` |
 
 ## API Endpoints
@@ -129,13 +130,34 @@ Limits (`pdfgen.limits`): template 1 MiB, 200 fields, PDF 20 MiB. gRPC deadline 
 
 ```
 repo/
-├── docs/ROADMAP.md         # Living productionization plan
-├── openapi/openapi.yaml    # Spec-first OpenAPI
-├── java-api/               # Spring Boot API (Gradle wrapper: gradlew, gradle-wrapper.jar)
-├── rust-compiler/          # Stateless gRPC Typst sidecar
-├── templates/              # Source .typ (seed these; skip _test_compile.typ)
-├── migrations/             # PostgreSQL schema (source of truth)
-├── scripts/                # Python: seed, smoke, stress (see scripts/README.md)
+├── docs/ROADMAP.md         # Living plan
+├── docs/PROXMOX_LXC.md     # First real deploy (Compose in LXC)
+├── openapi/openapi.yaml
+├── java-api/               # HTTP API — see java-api/README.md
+├── rust-compiler/          # gRPC sidecar — see rust-compiler/README.md
+├── templates/              # Typst + schema — see templates/README.md
+├── migrations/             # Postgres schema only — see migrations/README.md
+├── scripts/                # Seed, smoke, k6 — see scripts/README.md
+├── k8s/                    # Kustomize — see k8s/README.md
 ├── docker-compose.yml
 └── docker-compose.prod.yml
+```
+
+## Kubernetes (k3s / later EKS/AKS)
+
+Compose first on Proxmox LXC ([`docs/PROXMOX_LXC.md`](docs/PROXMOX_LXC.md)). Then:
+
+```bash
+kubectl apply -k k8s/overlays/local
+kubectl -n pdfgen port-forward svc/java-api 8080:8080
+```
+
+Prod overlay: `kubectl apply -k k8s/overlays/prod` after replacing placeholder secrets. NetworkPolicy allows only `java-api` to reach `rust-compiler:50051`. HPA scales the sidecar on CPU (needs metrics-server). Do not swap Postgres/Rabbit for RDS/MSK until this chart is boring on k3s.
+
+## Stress
+
+```bash
+k6 run scripts/stress/generate.js    # warmup + sustained + spike
+k6 run scripts/stress/errors.js      # 404 / 400 / 413 / 422
+# sidecar kill / Rabbit flood: see scripts/stress/README.md
 ```
