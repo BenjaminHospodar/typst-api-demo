@@ -34,9 +34,14 @@ python scripts/test_functional.py
 
 ## Resource limits
 
-Match LXC memory to compose `deploy.resources.limits` in `docker-compose.prod.yml`. Start with 2 rust-compiler replicas; scale after stress tests (`scripts/stress_sync.py`, `scripts/stress_errors.py`).
+Match LXC memory to compose `deploy.resources.limits` in `docker-compose.prod.yml`. Start with 2 rust-compiler replicas; scale after stress tests (`k6 run scripts/stress/generate.js`).
 
 ## Next steps
 
-- Run k3s in the same LXC using manifests in `k8s/overlays/local/`
-- Or keep Compose until Helm chart is boring (see `k8s/`)
+```bash
+# k3s in the same LXC (needs metrics-server for HPA)
+kubectl apply -k k8s/overlays/local
+kubectl -n pdfgen port-forward svc/java-api 8080:8080
+```
+
+Keep Compose until that overlay is boring. Do not introduce AWS/Azure-specific brokers until then.

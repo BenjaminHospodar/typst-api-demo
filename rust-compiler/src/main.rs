@@ -103,9 +103,15 @@ async fn main() -> anyhow::Result<()> {
 
     tracing::info!("gRPC compile sidecar listening on {addr} (typst {TYPST_VERSION})");
 
+    let (mut health_reporter, health_service) = tonic_health::server::health_reporter();
+    health_reporter
+        .set_serving::<CompileServiceServer<CompileServiceImpl>>()
+        .await;
+
     Server::builder()
         .max_decoding_message_size(max_message_size)
         .max_encoding_message_size(max_message_size)
+        .add_service(health_service)
         .add_service(CompileServiceServer::new(CompileServiceImpl))
         .serve(addr)
         .await?;

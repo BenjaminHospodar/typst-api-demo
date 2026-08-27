@@ -26,6 +26,7 @@ COPY assets/ /assets/
 
 EXPOSE 50051
 ENV RUST_LOG=info
+ENV RUST_LOG_FORMAT=json
 ENV GRPC_ADDR=0.0.0.0:50051
 ENV TYPST_ASSETS_DIR=/assets
 ENTRYPOINT ["./typst-compiler-svc"]

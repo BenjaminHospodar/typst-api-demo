@@ -4,10 +4,8 @@ kind: Kustomization
 namespace: pdfgen
 
 resources:
-  - ../../base/namespace.yaml
-  - ../../base/rust-compiler.yaml
-  - ../../base/java-api.yaml
-  - ../../base/network-policy.yaml
+  - ../../base
+  - secrets.yaml
 
 patches:
   - target:
@@ -24,3 +22,13 @@ patches:
       - op: replace
         path: /spec/replicas
         value: 4
+  - target:
+      kind: HorizontalPodAutoscaler
+      name: rust-compiler
+    patch: |-
+      - op: replace
+        path: /spec/minReplicas
+        value: 2
+      - op: replace
+        path: /spec/maxReplicas
+        value: 8
