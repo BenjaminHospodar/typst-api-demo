@@ -1,8 +1,8 @@
-use typst::foundations::{Bytes, Datetime};
+use typst::diag::FileResult;
+use typst::foundations::{Bytes, Datetime, Dict, Value};
+use typst::syntax::{FileId, Source};
 use typst::text::{Font, FontBook};
 use typst::Library;
-use typst::syntax::{FileId, Source};
-use typst::diag::FileResult;
 
 pub struct SingleSourceWorld {
     source:     Source,
@@ -13,7 +13,11 @@ pub struct SingleSourceWorld {
 }
 
 impl SingleSourceWorld {
-    pub fn new(typ_source: String) -> Self {
+    /// Build a World whose `sys.inputs.data` is the raw JSON string from the
+    /// gRPC `inputs_json` field. Templates decode it with
+    /// `#let vars = json.decode(sys.inputs.at("data", default: "{}"))`.
+    /// User field values are never interpolated into Typst source.
+    pub fn new(typ_source: String, inputs_json: &str) -> Self {
         let assets_dir = std::env::var("TYPST_ASSETS_DIR")
             .ok()
             .map(std::path::PathBuf::from);
@@ -27,9 +31,13 @@ impl SingleSourceWorld {
 
         let book = FontBook::from_fonts(&fonts);
 
+        let json = if inputs_json.is_empty() { "{}" } else { inputs_json };
+        let mut inputs = Dict::new();
+        inputs.insert("data".into(), Value::Str(json.into()));
+
         Self {
             source:  Source::detached(typ_source),
-            library: typst::utils::LazyHash::new(Library::default()),
+            library: typst::utils::LazyHash::new(Library::builder().with_inputs(inputs).build()),
             book:    typst::utils::LazyHash::new(book),
             fonts,
             assets_dir,
@@ -62,9 +70,8 @@ impl typst::World for SingleSourceWorld {
         let rel = id.vpath().as_rootless_path();
         if let Some(ref assets_dir) = self.assets_dir {
             let full_path = assets_dir.join(rel);
-            match std::fs::read(&full_path) {
-                Ok(data) => return Ok(Bytes::from(data)),
-                Err(_) => {}
+            if let Ok(data) = std::fs::read(&full_path) {
+                return Ok(Bytes::from(data));
             }
         }
         Err(typst::diag::FileError::NotFound(rel.into()))

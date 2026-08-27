@@ -2,15 +2,11 @@
 // TD Mutual Funds — RRSP Statement  v1.0.0
 // Typst 0.12  |  TD Emerald branding
 //
-// Required packages (resolved from Typst Universe):
-//   @preview/tiaoma:0.3.0  — QR code
-//   @preview/cetz:0.3.4    — portfolio line chart + postal barcode
-//
-// `vars` dict is prepended by the Rust worker at render time.
+// Phase 1: no Typst Universe packages. QR/chart are native placeholders.
+// Fields bind via sidecar sys.inputs.data (JSON string).
 // ============================================================
 
-#import "@preview/tiaoma:0.3.0": qrcode
-#import "@preview/cetz:0.3.4": canvas, draw
+#let vars = json.decode(sys.inputs.at("data", default: "{}"))
 
 // ══════════════════════════════════════════════════════════════
 // TD EMERALD PALETTE
@@ -64,138 +60,40 @@
   #body
 ]
 
-// ── Draw a 4-state Canada Post-style postal barcode (cetz) ────
-// Returns a cetz canvas that is ~210 mm wide × ~6 mm tall.
-// Rotate 90° and place in the left margin to get the authentic
-// vertical barcode found on TD bank statement envelopes.
+// ── Native 4-state postal barcode stand-in (no cetz) ────────
 #let postal-barcode() = {
-  // 4-state pattern: 0 = ascender only, 1 = full bar, 2 = descender only, 3 = tracker only
   let base = (1, 0, 2, 3, 1, 2, 0, 3, 1, 0, 2, 1, 3, 0, 1, 3, 2, 0, 1, 2)
   let pattern = ()
-  for _ in range(9) { pattern = pattern + base }    // 180 bars total ≈ 207 mm
-
-  let bw    = 1.5     // bar width (units)
-  let gap   = 0.75    // gap between bars
-  let fh    = 11.0    // full bar height
-  let hh    = 5.5     // tracker height (centre)
-
-  canvas(length: 0.65mm, {
-    import draw: *
+  for _ in range(9) { pattern = pattern + base }
+  let unit = 1.15pt
+  box(width: 207mm, height: 7mm, {
     for i in range(pattern.len()) {
-      let x  = i * (bw + gap)
       let bt = pattern.at(i)
-      // bt: 0=full, 1=ascender (top half), 2=descender (bottom half), 3=tracker (middle)
-      let y0 = if bt == 2 { hh - 0.5 } else if bt == 3 { hh - 2.0 } else { 0.0 }
-      let y1 = if bt == 1 { hh + 0.5 } else if bt == 3 { hh + 2.0 } else { fh   }
-      rect((x, y0), (x + bw, y1), fill: td-dark, stroke: none)
+      let y0 = if bt == 2 { 3.2mm } else if bt == 3 { 2.2mm } else { 0mm }
+      let y1 = if bt == 1 { 3.8mm } else if bt == 3 { 4.8mm } else { 7mm }
+      place(
+        dx: i * unit,
+        dy: y0,
+        rect(width: 0.9pt, height: y1 - y0, fill: td-dark, stroke: none),
+      )
     }
   })
 }
 
-// ── Draw the performance line chart (cetz) ───────────────────
-// Returns a labelled two-line chart element.
+// ── Native performance-chart placeholder (no cetz) ───────────
 #let performance-chart() = {
-  canvas(length: 1cm, {
-    import draw: *
-
-    let W    = 9.5    // right edge x (cm)
-    let H    = 5.4    // chart top y
-    let PL   = 1.45   // left pad — y-axis label area
-    let PB   = 0.72   // bottom pad — x-axis label area
-    let ymin = 40000.0
-    let ymax = 60000.0
-    let xN   = 12     // months
-
-    let yw = H - PB
-    let xw = W - PL
-
-    // ── Background ──────────────────────────────────────────
-    rect((PL, PB), (W, H), fill: luma(252), stroke: 0.4pt + luma(210))
-
-    // ── Y-axis gridlines + labels ────────────────────────────
-    let yticks = (40000, 45000, 50000, 55000, 60000)
-    let ylbls  = ("$40,000", "$45,000", "$50,000", "$55,000", "$60,000")
-    for i in range(yticks.len()) {
-      let yv   = yticks.at(i)
-      let ypos = PB + (yv - ymin) / (ymax - ymin) * yw
-      line((PL, ypos), (W, ypos), stroke: 0.3pt + luma(215))
-      content(
-        (PL - 0.12, ypos), anchor: "east",
-        text(size: 5.5pt, fill: td-gray)[#ylbls.at(i)]
-      )
-    }
-
-    // ── X-axis labels ─────────────────────────────────────────
-    content((PL,           PB - 0.12), anchor: "north",
-      text(size: 5.5pt, fill: td-gray)[Jan#linebreak()2016])
-    content((PL + xw / 2,  PB - 0.12), anchor: "north",
-      text(size: 5.5pt, fill: td-gray)[Jun#linebreak()2016])
-    content((W,            PB - 0.12), anchor: "north",
-      text(size: 5.5pt, fill: td-gray)[Dec#linebreak()2016])
-
-    // ── Helper: data point → canvas coord ────────────────────
-    let pt(d) = (
-      PL + d.at(0) / xN * xw,
-      PB + (d.at(1) - ymin) / (ymax - ymin) * yw,
-    )
-
-    // ── Market value — green line (monthly Jan–Dec 2016) ─────
-    let mv = (
-      (0,  49113.33),
-      (1,  48620.0),
-      (2,  49120.0),
-      (3,  49750.0),
-      (4,  49420.0),
-      (5,  50180.0),
-      (6,  50480.0),
-      (7,  50090.0),
-      (8,  50720.0),
-      (9,  50960.0),
-      (10, 50580.0),
-      (11, 51080.0),
-      (12, 51260.78),
-    )
-
-    // ── Invested capital — dark line (flatter, net deposits) ─
-    let ic = (
-      (0,  48222.33),
-      (1,  48290.0),
-      (2,  48350.0),
-      (3,  48400.0),
-      (4,  48450.0),
-      (5,  48490.0),
-      (6,  48500.0),
-      (7,  48530.0),
-      (8,  48552.0),
-      (9,  48580.0),
-      (10, 48600.0),
-      (11, 48613.0),
-      (12, 48613.0),
-    )
-
-    // Draw market value line (TD green, 2 pt)
-    for i in range(mv.len() - 1) {
-      line(pt(mv.at(i)), pt(mv.at(i + 1)), stroke: 2pt + td-green)
-    }
-
-    // Draw invested capital line (dark, 1.4 pt)
-    for i in range(ic.len() - 1) {
-      line(pt(ic.at(i)), pt(ic.at(i + 1)), stroke: 1.4pt + td-dark)
-    }
-
-    // End-point value labels
-    let m-end = pt(mv.last())
-    let i-end = pt(ic.last())
-
-    content(
-      (m-end.at(0) + 0.12, m-end.at(1) + 0.16), anchor: "west",
-      text(size: 6pt, weight: "bold", fill: td-green)[\$51,260.78]
-    )
-    content(
-      (i-end.at(0) + 0.12, i-end.at(1) - 0.22), anchor: "west",
-      text(size: 6pt, fill: td-dark)[\$49,113.33]
-    )
-  })
+  block(
+    width: 100%,
+    height: 5.4cm,
+    fill: luma(252),
+    stroke: 0.4pt + luma(210),
+    inset: 10pt,
+    align(center + horizon)[
+      #text(size: 8pt, fill: td-gray)[Account performance chart]
+      #v(0.3em)
+      #text(size: 7pt, fill: td-gray)[Native placeholder — Universe packages are not resolved in-service]
+    ],
+  )
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -523,9 +421,12 @@
 
   // QR code (encodes account number for digital scanning)
   align(left + horizon,
-    qrcode(
-      vars.at("account_number", default: "5150064"),
+    rect(
       width: 1.4cm,
+      height: 1.4cm,
+      stroke: 0.7pt + td-dark,
+      inset: 2pt,
+      align(center + horizon, text(size: 6pt, fill: td-gray)[QR]),
     )
   ),
 

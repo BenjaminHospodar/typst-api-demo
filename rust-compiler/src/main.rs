@@ -1,8 +1,5 @@
 mod world;
-mod worker;
 
-use redis::Client;
-use tokio::task::JoinSet;
 use std::env;
 use tonic::{transport::Server, Request, Response, Status};
 
@@ -11,13 +8,33 @@ pub mod compile_proto {
 }
 
 use compile_proto::compile_service_server::{CompileService, CompileServiceServer};
-use compile_proto::{
-    CompileRequest, CompileResponse,
-    HealthRequest, HealthResponse,
-};
+use compile_proto::{CompileRequest, CompileResponse, HealthRequest, HealthResponse};
 
-pub struct CompileServiceImpl {
-    redis_client: Client,
+const TYPST_VERSION: &str = "0.12";
+
+struct CompileServiceImpl;
+
+fn diagnostic_message(errors: impl AsRef<[typst::diag::SourceDiagnostic]>) -> String {
+    errors
+        .as_ref()
+        .iter()
+        .map(|e| e.message.to_string())
+        .collect::<Vec<_>>()
+        .join("; ")
+}
+
+fn compile_pdf(template_source: String, inputs_json: &str) -> Result<(Vec<u8>, i32), String> {
+    let world = world::SingleSourceWorld::new(template_source, inputs_json);
+    let compiled = typst::compile(&world);
+    let doc = compiled.output.map_err(|errors| {
+        format!("typst error: {}", diagnostic_message(&errors))
+    })?;
+
+    let pdf_bytes = typst_pdf::pdf(&doc, &typst_pdf::PdfOptions::default()).map_err(|errors| {
+        format!("pdf export error: {}", diagnostic_message(&errors))
+    })?;
+
+    Ok((pdf_bytes, doc.pages.len() as i32))
 }
 
 #[tonic::async_trait]
@@ -28,118 +45,87 @@ impl CompileService for CompileServiceImpl {
     ) -> Result<Response<CompileResponse>, Status> {
         let req = request.into_inner();
         let t0 = std::time::Instant::now();
+        let job_id = req.job_id;
 
-        let world = world::SingleSourceWorld::new(req.typ_source);
-        let compiled = typst::compile(&world);
+        tracing::info!(job_id = %job_id, "compile");
 
-        let doc = compiled.output.map_err(|errors| {
-            let msg = errors.iter()
-                .map(|e| e.message.to_string())
-                .collect::<Vec<_>>()
-                .join("; ");
-            Status::invalid_argument(format!("typst error: {}", msg))
-        })?;
-
-        let pdf_bytes = typst_pdf::pdf(&doc, &typst_pdf::PdfOptions::default())
-            .map_err(|errors| {
-                let msg = errors.iter()
-                    .map(|e| e.message.to_string())
-                    .collect::<Vec<_>>()
-                    .join("; ");
-                Status::internal(format!("pdf export error: {}", msg))
-            })?;
+        let result = compile_pdf(req.template_source, &req.inputs_json);
         let compile_ms = t0.elapsed().as_millis() as i32;
 
-        Ok(Response::new(CompileResponse {
-            job_id: req.job_id,
-            pdf_bytes: pdf_bytes,
-            pages: doc.pages.len() as i32,
-            compile_ms,
-        }))
+        let response = match result {
+            Ok((pdf_bytes, pages)) => {
+                tracing::info!(job_id = %job_id, pages, compile_ms, "compiled");
+                CompileResponse {
+                    job_id,
+                    pdf_bytes,
+                    pages,
+                    compile_ms,
+                    error: String::new(),
+                }
+            }
+            Err(error) => {
+                tracing::error!(job_id = %job_id, error = %error, "compile failed");
+                CompileResponse {
+                    job_id,
+                    pdf_bytes: Vec::new(),
+                    pages: 0,
+                    compile_ms,
+                    error,
+                }
+            }
+        };
+
+        Ok(Response::new(response))
     }
 
     async fn health(
         &self,
         _request: Request<HealthRequest>,
     ) -> Result<Response<HealthResponse>, Status> {
-        // Check Redis queue depth
-        let queue_depth = match self.redis_client.get_multiplexed_async_connection().await {
-            Ok(mut conn) => {
-                let len: i32 = redis::cmd("XLEN")
-                    .arg("pdf:jobs")
-                    .query_async(&mut conn)
-                    .await
-                    .unwrap_or(0);
-                len
-            }
-            Err(_) => -1,
-        };
-
         Ok(Response::new(HealthResponse {
             ok: true,
-            typst_version: "0.12".to_string(),
-            queue_depth,
+            typst_version: TYPST_VERSION.to_string(),
         }))
     }
 }
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    tracing_subscriber::fmt()
-        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
-        .init();
+    init_tracing();
 
-    let redis_url = env::var("REDIS_URL").unwrap_or_else(|_| "redis://redis:6379".into());
-    let worker_count: usize = env::var("WORKER_THREADS")
-        .unwrap_or_else(|_| "4".into())
+    let addr: std::net::SocketAddr = env::var("GRPC_ADDR")
+        .unwrap_or_else(|_| "0.0.0.0:50051".into())
         .parse()?;
+    let max_message_size: usize = env::var("GRPC_MAX_MESSAGE_SIZE")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(20 * 1024 * 1024);
 
-    let client = Client::open(redis_url)?;
+    tracing::info!("gRPC compile sidecar listening on {addr} (typst {TYPST_VERSION})");
 
-    // Ensure consumer group exists
-    {
-        let mut conn = client.get_multiplexed_async_connection().await?;
-        let _: Result<(), _> = redis::cmd("XGROUP")
-            .arg("CREATE")
-            .arg("pdf:jobs")
-            .arg("typst-workers")
-            .arg("$")
-            .arg("MKSTREAM")
-            .query_async(&mut conn)
-            .await;
-    }
-
-    tracing::info!("Starting {} worker threads", worker_count);
-
-    let mut set = JoinSet::new();
-
-    for i in 0..worker_count {
-        let conn = client.get_multiplexed_async_connection().await?;
-        let worker_id = format!("worker-{}", i);
-        set.spawn(async move {
-            worker::run_worker(conn, worker_id).await;
-        });
-    }
-
-    // gRPC health/compile server on port 50051
-    let grpc_client = client.clone();
-    set.spawn(async move {
-        let addr = "0.0.0.0:50051".parse().unwrap();
-        tracing::info!("gRPC server listening on {}", addr);
-        Server::builder()
-            .add_service(CompileServiceServer::new(CompileServiceImpl {
-                redis_client: grpc_client,
-            }))
-            .serve(addr)
-            .await
-            .unwrap();
-    });
-
-    while let Some(res) = set.join_next().await {
-        if let Err(e) = res {
-            tracing::error!("Worker panicked: {}", e);
-        }
-    }
+    Server::builder()
+        .max_decoding_message_size(max_message_size)
+        .max_encoding_message_size(max_message_size)
+        .add_service(CompileServiceServer::new(CompileServiceImpl))
+        .serve(addr)
+        .await?;
 
     Ok(())
+}
+
+fn init_tracing() {
+    let json = env::var("RUST_LOG_FORMAT")
+        .map(|v| v.eq_ignore_ascii_case("json"))
+        .unwrap_or(false);
+    let filter = tracing_subscriber::EnvFilter::from_default_env();
+    if json {
+        tracing_subscriber::fmt()
+            .json()
+            .with_env_filter(filter)
+            .init();
+    } else {
+        tracing_subscriber::fmt()
+            .with_env_filter(filter)
+            .init();
+    }
 }

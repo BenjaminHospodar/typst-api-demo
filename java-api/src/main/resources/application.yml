@@ -1,8 +1,10 @@
-spring:
+﻿spring:
+  application:
+    name: pdfgen-api
   datasource:
-    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/pdfgen}
-    username: ${SPRING_DATASOURCE_USERNAME:pdfgen}
-    password: ${SPRING_DATASOURCE_PASSWORD:pdfgen}
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://${POSTGRES_HOST:localhost}:${POSTGRES_PORT:5432}/${POSTGRES_DB:pdfgen}}
+    username: ${SPRING_DATASOURCE_USERNAME:${POSTGRES_USER:pdfgen}}
+    password: ${SPRING_DATASOURCE_PASSWORD:${POSTGRES_PASSWORD:pdfgen}}
     hikari:
       maximum-pool-size: 50
   jpa:
@@ -11,21 +13,62 @@ spring:
     open-in-view: false
   data:
     redis:
-      host: ${SPRING_REDIS_HOST:localhost}
-      port: ${SPRING_REDIS_PORT:6379}
+      host: ${SPRING_REDIS_HOST:${REDIS_HOST:localhost}}
+      port: ${SPRING_REDIS_PORT:${REDIS_PORT:6379}}
+      password: ${SPRING_REDIS_PASSWORD:${REDIS_PASSWORD:}}
       lettuce:
         pool:
           max-active: 100
           max-idle: 20
           min-idle: 10
+  rabbitmq:
+    host: ${SPRING_RABBITMQ_HOST:${RABBITMQ_HOST:localhost}}
+    port: ${SPRING_RABBITMQ_PORT:${RABBITMQ_PORT:5672}}
+    username: ${SPRING_RABBITMQ_USERNAME:${RABBITMQ_USER:pdfgen}}
+    password: ${SPRING_RABBITMQ_PASSWORD:${RABBITMQ_PASSWORD:pdfgen}}
+    listener:
+      simple:
+        default-requeue-rejected: false
+        retry:
+          enabled: true
+          max-attempts: 3
+          initial-interval: 1s
+          multiplier: 2
+          max-interval: 4s
+        concurrency: 4
+        max-concurrency: 8
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.amqp.RabbitAutoConfiguration
 
 pdfgen:
+  api-key: ${PDFGEN_API_KEY:}
+  compiler:
+    host: ${PDFGEN_COMPILER_HOST:localhost}
+    port: ${PDFGEN_COMPILER_PORT:50051}
+    deadline-ms: 30000
+    max-message-size: 20971520
   queue:
     max-depth: 100000
-    sync-timeout-ms: 200
+    sync-timeout-ms: 5000
+  limits:
+    max-template-bytes: 1048576
+    max-field-count: 200
+    max-field-key-length: 64
+    max-field-value-length: 8192
+    max-pdf-bytes: 20971520
+  rabbit:
+    enabled: false
+    jobs-exchange: pdfgen.jobs
+    events-exchange: pdfgen.events
+    jobs-queue: pdfgen.jobs.q
+    jobs-dlq: pdfgen.jobs.dlq
+    events-queue: pdfgen.events.q
+    jobs-routing-key: generate
+    jobs-dlx: pdfgen.jobs.dlx
 
 server:
-  port: 8080
+  port: ${SERVER_PORT:${JAVA_API_PORT:8080}}
   tomcat:
     threads:
       max: 800
@@ -38,3 +81,64 @@ management:
     web:
       exposure:
         include: health,info,metrics
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      group:
+        liveness:
+          include: ping
+        readiness:
+          include: db,redis,compiler
+  health:
+    rabbit:
+      enabled: false
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+    url: /openapi.yaml
+    persist-authorization: true
+  api-docs:
+    path: /v3/api-docs
+
+resilience4j:
+  retry:
+    instances:
+      compiler:
+        max-attempts: 3
+        wait-duration: 200ms
+        enable-exponential-backoff: true
+        exponential-backoff-multiplier: 2
+        retry-exceptions:
+          - com.yourco.pdfgen.exception.ServiceUnavailableException
+        ignore-exceptions:
+          - com.yourco.pdfgen.exception.CompileException
+          - com.yourco.pdfgen.exception.PayloadTooLargeException
+          - com.yourco.pdfgen.exception.InvalidRequestException
+          - com.yourco.pdfgen.exception.TemplateNotFoundException
+  circuitbreaker:
+    instances:
+      compiler:
+        register-health-indicator: false
+        sliding-window-size: 10
+        minimum-number-of-calls: 5
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 10s
+        permitted-number-of-calls-in-half-open-state: 3
+        automatic-transition-from-open-to-half-open-enabled: true
+        record-exceptions:
+          - com.yourco.pdfgen.exception.ServiceUnavailableException
+        ignore-exceptions:
+          - com.yourco.pdfgen.exception.CompileException
+          - com.yourco.pdfgen.exception.PayloadTooLargeException
+  bulkhead:
+    instances:
+      compiler:
+        max-concurrent-calls: 16
+        max-wait-duration: 2s
+  timelimiter:
+    instances:
+      compiler:
+        timeout-duration: 30s
+        cancel-running-future: true

@@ -1,0 +1,28 @@
+spring:
+  rabbitmq:
+    host: ${SPRING_RABBITMQ_HOST:${RABBITMQ_HOST:localhost}}
+    port: ${SPRING_RABBITMQ_PORT:${RABBITMQ_PORT:5672}}
+    username: ${SPRING_RABBITMQ_USERNAME:${RABBITMQ_USER:pdfgen}}
+    password: ${SPRING_RABBITMQ_PASSWORD:${RABBITMQ_PASSWORD:pdfgen}}
+
+pdfgen:
+  compiler:
+    host: ${PDFGEN_COMPILER_HOST:localhost}
+    port: ${PDFGEN_COMPILER_PORT:${GRPC_PORT:50051}}
+  rabbit:
+    enabled: true
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: always
+      group:
+        readiness:
+          include: db,redis,rabbit,compiler
+  health:
+    rabbit:
+      enabled: true

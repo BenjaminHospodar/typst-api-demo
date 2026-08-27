@@ -1,3 +1,5 @@
+#let vars = json.decode(sys.inputs.at("data", default: "{}"))
+
 #set page(paper: "a4", margin: (x: 1.5cm, y: 2cm))
 #set text(size: 9pt)
 
