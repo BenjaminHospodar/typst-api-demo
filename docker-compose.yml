@@ -4,58 +4,86 @@ services:
   postgres:
     image: postgres:16-alpine
     environment:
-      POSTGRES_DB: pdfgen
-      POSTGRES_USER: pdfgen
-      POSTGRES_PASSWORD: pdfgen
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     ports:
-      - "5432:5432"
+      - "${POSTGRES_PORT}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./migrations:/docker-entrypoint-initdb.d
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U pdfgen"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 5s
       retries: 5
 
   redis:
     image: redis:7-alpine
-    command: redis-server --maxmemory 512mb --maxmemory-policy allkeys-lru --appendonly yes
+    command: redis-server --maxmemory ${REDIS_MAXMEMORY} --maxmemory-policy allkeys-lru --appendonly yes
     ports:
-      - "6379:6379"
+      - "${REDIS_PORT}:6379"
     volumes:
       - redis_data:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
 
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
+    ports:
+      - "${RABBITMQ_PORT}:5672"
+      - "${RABBITMQ_MANAGEMENT_PORT:-15672}:15672"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+
+  rust-compiler:
+    build: ./rust-compiler
+    ports:
+      - "${GRPC_PORT}:50051"
+    environment:
+      RUST_LOG: ${RUST_LOG}
+      RUST_LOG_FORMAT: json
+      GRPC_ADDR: ${GRPC_ADDR}
+      GRPC_MAX_MESSAGE_SIZE: "20971520"
+      TYPST_ASSETS_DIR: ${TYPST_ASSETS_DIR}
+
   java-api:
     build: ./java-api
     ports:
-      - "8080:8080"
+      - "${JAVA_API_PORT}:8080"
     environment:
-      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/pdfgen
-      SPRING_DATASOURCE_USERNAME: pdfgen
-      SPRING_DATASOURCE_PASSWORD: pdfgen
+      SPRING_PROFILES_ACTIVE: local
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB}
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD}
       SPRING_REDIS_HOST: redis
       SPRING_REDIS_PORT: "6379"
+      SPRING_RABBITMQ_HOST: rabbitmq
+      SPRING_RABBITMQ_PORT: "5672"
+      SPRING_RABBITMQ_USERNAME: ${RABBITMQ_USER}
+      SPRING_RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD}
+      PDFGEN_COMPILER_HOST: rust-compiler
+      PDFGEN_COMPILER_PORT: "50051"
+      PDFGEN_API_KEY: ${PDFGEN_API_KEY:-}
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
-
-  rust-compiler:
-    build: ./rust-compiler
-    environment:
-      REDIS_URL: redis://redis:6379
-      WORKER_THREADS: "4"
-      RUST_LOG: info
-    depends_on:
-      redis:
+      rabbitmq:
         condition: service_healthy
-    deploy:
-      replicas: 2
+      rust-compiler:
+        condition: service_started
 
 volumes:
   postgres_data:
   redis_data:
+  rabbitmq_data:

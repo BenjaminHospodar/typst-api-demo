@@ -2,10 +2,10 @@
 // TD Bank — Professional English Invoice
 // Mirrors invoice-pro layout: header, address block, items,
 // totals, bank details, footer.
-// vars dict is prepended by the Rust compiler at render time.
+// Fields bind via sidecar sys.inputs.data. No Typst Universe packages.
 // ============================================================
 
-#import "@preview/tiaoma:0.3.0": qrcode
+#let vars = json.decode(sys.inputs.at("data", default: "{}"))
 
 #let td-green = rgb("#00703c")
 #let td-dark  = rgb("#1a1a1a")
@@ -243,7 +243,13 @@
   ]),
   align(right + horizon,
     block({
-      align(center, qrcode("https://www.td.com", width: 1.6cm))
+      align(center, rect(
+        width: 1.6cm,
+        height: 1.6cm,
+        stroke: 0.7pt + td-dark,
+        inset: 2pt,
+        align(center + horizon, text(size: 6pt, fill: td-gray)[QR]),
+      ))
       v(0.2em)
       align(center, text(size: 6.5pt, fill: td-gray)[Scan to visit td.com])
     })

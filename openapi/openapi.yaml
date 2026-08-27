@@ -1,0 +1,202 @@
+openapi: 3.0.3
+info:
+  title: Typst PDF Generation API
+  version: 1.0.0
+  description: |
+    Generate PDFs from Typst templates. Java owns HTTP, Postgres, Redis, and RabbitMQ.
+    A stateless Rust gRPC sidecar compiles Typst via `typst.compile.v1`.
+servers:
+  - url: http://localhost:8080
+security:
+  - ApiKeyAuth: []
+paths:
+  /api/v1/generate:
+    post:
+      summary: Generate a PDF from a Typst template
+      operationId: generate
+      tags: [PDF Generation]
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/ApiKeyHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GenerateRequest'
+            example:
+              form: invoice
+              version: "2.1.0"
+              fields:
+                name: Acme Corp
+                date: "2024-04-13"
+                text1: Consulting services
+                text3: Net 30
+      responses:
+        '200':
+          description: PDF generated synchronously
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        '202':
+          description: Job accepted; poll GET /api/v1/jobs/{jobId}/result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AsyncJobResponse'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorBody'
+        '401':
+          description: Missing or invalid X-API-Key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorBody'
+        '404':
+          description: Template not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorBody'
+        '410':
+          description: Job finished but the PDF expired from the Redis cache
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorBody'
+        '413':
+          description: Payload too large (template, fields, or PDF)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorBody'
+        '422':
+          description: Compile error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorBody'
+        '503':
+          description: Compiler, queue, or dependency unavailable
+          headers:
+            Retry-After:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorBody'
+  /api/v1/jobs/{jobId}/result:
+    get:
+      summary: Poll for async PDF generation result
+      operationId: pollResult
+      tags: [PDF Generation]
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: '#/components/parameters/ApiKeyHeader'
+      responses:
+        '200':
+          description: PDF ready
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        '202':
+          description: Job still processing
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AsyncJobResponse'
+        '401':
+          description: Missing or invalid X-API-Key
+        '404':
+          description: Job not found
+        '410':
+          description: Job finished but the PDF expired from the Redis cache
+        '422':
+          description: Compile failed
+        '503':
+          description: Compiler unavailable
+  /actuator/health:
+    get:
+      summary: Liveness/readiness (no API key)
+      operationId: health
+      security: []
+      tags: [Health]
+      responses:
+        '200':
+          description: Application health
+  /v3/api-docs:
+    get:
+      summary: Generated OpenAPI JSON
+      operationId: apiDocs
+      security: []
+      tags: [Health]
+      responses:
+        '200':
+          description: OpenAPI document
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: Required when PDFGEN_API_KEY is set (always in prod)
+  parameters:
+    ApiKeyHeader:
+      name: X-API-Key
+      in: header
+      required: false
+      schema:
+        type: string
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      schema:
+        type: string
+      description: Replay the same generate request for 24h (stores job_id in Redis)
+  schemas:
+    GenerateRequest:
+      type: object
+      required: [form, version, fields]
+      properties:
+        form:
+          type: string
+          example: invoice
+        version:
+          type: string
+          example: "2.1.0"
+        fields:
+          type: object
+          additionalProperties:
+            type: string
+    AsyncJobResponse:
+      type: object
+      properties:
+        job_id:
+          type: string
+        poll_url:
+          type: string
+        status:
+          type: string
+    ErrorBody:
+      type: object
+      properties:
+        error:
+          type: string
+        status:
+          type: string
+        job_id:
+          type: string

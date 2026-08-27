@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 import time
 from pathlib import Path
@@ -17,9 +18,10 @@ SKIP_FILES = {"_test_compile.typ"}
 
 INSERT_SQL = """
 INSERT INTO templates (form, version, typ_source, schema, active)
-VALUES (%s, %s, %s, '{}'::jsonb, true)
+VALUES (%s, %s, %s, %s::jsonb, true)
 ON CONFLICT (form, version)
-DO UPDATE SET typ_source = EXCLUDED.typ_source
+DO UPDATE SET typ_source = EXCLUDED.typ_source,
+              schema = EXCLUDED.schema
 """
 
 
@@ -31,6 +33,15 @@ def parse_template(path: Path) -> tuple[str, str]:
     form = path.parent.name
     version = path.stem.removeprefix("v")
     return form, version
+
+
+def load_schema(typ_path: Path) -> str:
+    schema_path = typ_path.with_name(f"{typ_path.stem}.schema.json")
+    if not schema_path.is_file():
+        return "{}"
+    text = schema_path.read_text(encoding="utf-8").strip() or "{}"
+    json.loads(text)
+    return text
 
 
 def discover_templates(templates_dir: Path) -> list[Path]:
@@ -86,9 +97,10 @@ def seed(
         for path in templates:
             form, version = parse_template(path)
             source = path.read_text(encoding="utf-8")
+            schema = load_schema(path)
             print(f"  -> {form} v{version}")
 
-            conn.execute(INSERT_SQL, (form, version, source))
+            conn.execute(INSERT_SQL, (form, version, source, schema))
             if redis_client is not None:
                 redis_client.set(f"template:{form}:{version}", source)
             count += 1

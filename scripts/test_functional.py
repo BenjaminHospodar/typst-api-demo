@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+import os
 from pathlib import Path
 
 import httpx
@@ -31,9 +32,12 @@ def red(msg: str) -> None:
 
 
 class Runner:
-    def __init__(self, base_url: str, timeout: float) -> None:
+    def __init__(self, base_url: str, timeout: float, api_key: str | None) -> None:
         self.base_url = base_url.rstrip("/")
-        self.client = httpx.Client(timeout=timeout)
+        headers = {}
+        if api_key:
+            headers["X-API-Key"] = api_key
+        self.client = httpx.Client(timeout=timeout, headers=headers)
         self.passed = 0
         self.failed = 0
         self.failures: list[str] = []
@@ -253,9 +257,14 @@ def main() -> int:
         help="API base URL (default: BASE_URL from .env, or http://localhost:8080)",
     )
     parser.add_argument("--timeout", type=float, default=30.0, help="HTTP timeout in seconds")
+    parser.add_argument(
+        "--api-key",
+        default=os.environ.get("PDFGEN_API_KEY") or None,
+        help="X-API-Key header (default: PDFGEN_API_KEY from .env)",
+    )
     args = parser.parse_args()
 
-    runner = Runner(args.base_url, args.timeout)
+    runner = Runner(args.base_url, args.timeout, args.api_key or None)
     try:
         return runner.run()
     finally:

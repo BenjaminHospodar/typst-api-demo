@@ -1,0 +1,31 @@
+syntax = "proto3";
+package typst.compile.v1;
+
+option java_multiple_files = true;
+option java_package = "com.yourco.pdfgen.grpc";
+option java_outer_classname = "CompileProto";
+
+service CompileService {
+  rpc Compile (CompileRequest) returns (CompileResponse);
+  rpc Health  (HealthRequest)  returns (HealthResponse);
+}
+
+message CompileRequest {
+  string job_id          = 1;
+  string template_source = 2;
+  string inputs_json     = 3;
+}
+
+message CompileResponse {
+  string job_id     = 1;
+  bytes  pdf_bytes  = 2;
+  int32  pages      = 3;
+  int32  compile_ms = 4;
+  string error      = 5;
+}
+
+message HealthRequest {}
+message HealthResponse {
+  bool   ok            = 1;
+  string typst_version = 2;
+}
