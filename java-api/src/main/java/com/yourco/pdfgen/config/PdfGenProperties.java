@@ -11,7 +11,7 @@ public record PdfGenProperties(
     Rabbit rabbit
 ) {
     public record Compiler(String host, int port, long deadlineMs, int maxMessageSize) {}
-    public record Queue(long maxDepth, int syncTimeoutMs) {}
+    public record Queue(int syncTimeoutMs) {}
     public record Limits(
         int maxTemplateBytes,
         int maxFieldCount,

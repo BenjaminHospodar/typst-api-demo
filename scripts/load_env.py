@@ -34,16 +34,5 @@ def database_url() -> str:
     return f"postgresql://{user}:{password}@{host}:{port}/{db}"
 
 
-def redis_url() -> str:
-    if url := os.environ.get("REDIS_URL"):
-        return url
-    host = os.environ.get("REDIS_HOST", "localhost")
-    port = os.environ.get("REDIS_PORT", "6379")
-    password = os.environ.get("REDIS_PASSWORD", "")
-    if password:
-        return f"redis://:{password}@{host}:{port}/0"
-    return f"redis://{host}:{port}/0"
-
-
 def base_url() -> str:
     return os.environ.get("BASE_URL", "http://localhost:8080")

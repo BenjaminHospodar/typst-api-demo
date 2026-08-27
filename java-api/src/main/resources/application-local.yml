@@ -10,7 +10,7 @@ pdfgen:
     host: ${PDFGEN_COMPILER_HOST:localhost}
     port: ${PDFGEN_COMPILER_PORT:${GRPC_PORT:50051}}
   rabbit:
-    enabled: true
+    enabled: ${PDFGEN_RABBIT_ENABLED:true}
 
 management:
   endpoints:

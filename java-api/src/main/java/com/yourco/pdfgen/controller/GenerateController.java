@@ -77,10 +77,13 @@ public class GenerateController {
             }
         }
 
-        jobService.createJob(jobId, req.form(), req.version(), req.fields());
         try {
+            jobService.createJob(jobId, req.form(), req.version(), req.fields());
             jobPublisher.enqueue(new JobMessage(jobId, req.form(), req.version(), req.fields()));
         } catch (RuntimeException e) {
+            if (idempotencyKey != null && !idempotencyKey.isBlank()) {
+                idempotencyService.release(idempotencyKey, jobId);
+            }
             jobService.markFailed(jobId, req.form(), e.getMessage());
             if (e instanceof ServiceUnavailableException) {
                 throw e;
@@ -156,10 +159,14 @@ public class GenerateController {
     }
 
     private static ResponseEntity<byte[]> pdfResponse(String form, byte[] pdf) {
+        String safe = form == null ? "result" : form.replaceAll("[^A-Za-z0-9._-]", "_");
+        if (safe.length() > 64) {
+            safe = safe.substring(0, 64);
+        }
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_PDF_VALUE)
                 .header(HttpHeaders.CONTENT_DISPOSITION,
-                        "inline; filename=\"" + form + ".pdf\"")
+                        "inline; filename=\"" + safe + ".pdf\"")
                 .body(pdf);
     }
 }

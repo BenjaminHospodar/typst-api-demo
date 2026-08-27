@@ -4,6 +4,8 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
 import java.time.Duration;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.LockSupport;
 
 @Service
 public class IdempotencyService {
@@ -26,11 +28,20 @@ public class IdempotencyService {
         if (Boolean.TRUE.equals(claimed)) {
             return jobId;
         }
-        String existing = redis.opsForValue().get(PREFIX + idempotencyKey);
-        return existing != null ? existing : jobId;
+        for (int i = 0; i < 8; i++) {
+            String existing = redis.opsForValue().get(PREFIX + idempotencyKey);
+            if (existing != null && !existing.isBlank()) {
+                return existing;
+            }
+            LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(5));
+        }
+        throw new IllegalStateException("Idempotency key " + idempotencyKey + " was claimed but has no job id");
     }
 
-    public String findJobId(String idempotencyKey) {
-        return redis.opsForValue().get(PREFIX + idempotencyKey);
+    public void release(String idempotencyKey, String jobId) {
+        String existing = redis.opsForValue().get(PREFIX + idempotencyKey);
+        if (jobId.equals(existing)) {
+            redis.delete(PREFIX + idempotencyKey);
+        }
     }
 }

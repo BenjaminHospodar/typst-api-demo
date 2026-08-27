@@ -64,11 +64,14 @@ services:
           memory: 512M
 
   java-api:
-    build: ./java-api
+    build:
+      context: .
+      dockerfile: java-api/Dockerfile
     ports:
       - "${JAVA_API_PORT}:8080"
     environment:
       SPRING_PROFILES_ACTIVE: prod
+      PDFGEN_RABBIT_ENABLED: "true"
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB}
       SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER}
       SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD}

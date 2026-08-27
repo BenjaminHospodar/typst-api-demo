@@ -54,6 +54,12 @@ class FieldValidatorTest {
     }
 
     @Test
+    void rejectsOversizedFieldValue() {
+        assertThrows(PayloadTooLargeException.class,
+                () -> validator.validateFields(Map.of("name", "x".repeat(8193))));
+    }
+
+    @Test
     void schemaRequiresListedFields() {
         String schema = "{\"required\":[\"name\",\"date\"]}";
         assertThrows(InvalidRequestException.class,

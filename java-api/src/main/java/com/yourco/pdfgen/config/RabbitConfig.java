@@ -8,9 +8,13 @@ import org.springframework.amqp.core.DirectExchange;
 import org.springframework.amqp.core.Queue;
 import org.springframework.amqp.core.QueueBuilder;
 import org.springframework.amqp.core.TopicExchange;
+import com.yourco.pdfgen.model.JobMessage;
+import com.yourco.pdfgen.service.JobService;
 import org.springframework.amqp.rabbit.annotation.EnableRabbit;
 import org.springframework.amqp.rabbit.connection.ConnectionFactory;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
+import org.springframework.amqp.rabbit.retry.MessageRecoverer;
+import org.springframework.amqp.rabbit.retry.RejectAndDontRequeueRecoverer;
 import org.springframework.amqp.support.converter.Jackson2JsonMessageConverter;
 import org.springframework.boot.autoconfigure.amqp.RabbitAutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -38,6 +42,25 @@ public class RabbitConfig {
         template.setMessageConverter(converter);
         template.setMandatory(false);
         return template;
+    }
+
+    @Bean
+    public MessageRecoverer jobFailureRecoverer(JobService jobService, Jackson2JsonMessageConverter converter) {
+        MessageRecoverer reject = new RejectAndDontRequeueRecoverer();
+        return (message, cause) -> {
+            try {
+                Object payload = converter.fromMessage(message);
+                if (payload instanceof JobMessage job) {
+                    String msg = cause == null || cause.getMessage() == null
+                            ? "retries exhausted"
+                            : cause.getMessage();
+                    jobService.markFailed(job.jobId(), job.form(), msg);
+                }
+            } catch (RuntimeException ignored) {
+                // still DLQ the poison message
+            }
+            reject.recover(message, cause);
+        };
     }
 
     @Bean

@@ -1,6 +1,11 @@
 syntax = "proto3";
 package typst.compile.v1;
 
+option java_multiple_files = true;
+option java_package = "com.yourco.pdfgen.grpc";
+option java_outer_classname = "CompileProto";
+
+// Single source of truth. Java Gradle and Docker copy this file.
 service CompileService {
   rpc Compile (CompileRequest) returns (CompileResponse);
   rpc Health  (HealthRequest)  returns (HealthResponse);

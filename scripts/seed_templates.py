@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Seed templates/ into PostgreSQL and optionally Redis."""
+"""Seed templates/ into PostgreSQL. Skips _test_compile.typ CLI fixtures."""
 
 from __future__ import annotations
 
@@ -10,9 +10,8 @@ import time
 from pathlib import Path
 
 import psycopg
-import redis
 
-from load_env import database_url, load_dotenv, redis_url
+from load_env import database_url, load_dotenv
 
 SKIP_FILES = {"_test_compile.typ"}
 
@@ -61,24 +60,7 @@ def wait_for_postgres(dsn: str, timeout: int) -> None:
     raise TimeoutError(f"PostgreSQL not ready after {timeout}s")
 
 
-def wait_for_redis(url: str, timeout: int) -> None:
-    deadline = time.time() + timeout
-    while time.time() < deadline:
-        try:
-            if redis.from_url(url).ping():
-                return
-        except redis.RedisError:
-            pass
-        time.sleep(1)
-    raise TimeoutError(f"Redis not ready after {timeout}s")
-
-
-def seed(
-    templates_dir: Path,
-    dsn: str,
-    redis_url: str | None,
-    dry_run: bool = False,
-) -> int:
+def seed(templates_dir: Path, dsn: str, dry_run: bool = False) -> int:
     templates = discover_templates(templates_dir)
     if not templates:
         print(f"No templates found under {templates_dir}", file=sys.stderr)
@@ -90,23 +72,16 @@ def seed(
             print(f"  -> {form} v{version}")
         return len(templates)
 
-    redis_client = redis.from_url(redis_url) if redis_url else None
     count = 0
-
     with psycopg.connect(dsn) as conn:
         for path in templates:
             form, version = parse_template(path)
             source = path.read_text(encoding="utf-8")
             schema = load_schema(path)
             print(f"  -> {form} v{version}")
-
             conn.execute(INSERT_SQL, (form, version, source, schema))
-            if redis_client is not None:
-                redis_client.set(f"template:{form}:{version}", source)
             count += 1
-
         conn.commit()
-
     return count
 
 
@@ -117,38 +92,21 @@ def main() -> int:
         "--templates-dir",
         type=Path,
         default=repo_root() / "templates",
-        help="Root templates directory (default: repo/templates)",
     )
-    parser.add_argument(
-        "--database-url",
-        default=database_url(),
-    )
-    parser.add_argument(
-        "--redis-url",
-        default=redis_url(),
-        help="Set empty or use --no-redis to skip cache warming",
-    )
-    parser.add_argument("--no-redis", action="store_true")
+    parser.add_argument("--database-url", default=database_url())
     parser.add_argument("--no-wait", action="store_true")
     parser.add_argument("--wait-timeout", type=int, default=60)
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
 
-    redis_url = None if args.no_redis else args.redis_url
-
     print("=== PDF Gen Seeder ===")
-
     if not args.no_wait:
         print("Waiting for PostgreSQL...")
         wait_for_postgres(args.database_url, args.wait_timeout)
         print("PostgreSQL ready.")
-        if redis_url:
-            print("Waiting for Redis...")
-            wait_for_redis(redis_url, args.wait_timeout)
-            print("Redis ready.")
 
     print(f"Seeding templates from {args.templates_dir}...")
-    count = seed(args.templates_dir, args.database_url, redis_url, dry_run=args.dry_run)
+    count = seed(args.templates_dir, args.database_url, dry_run=args.dry_run)
     print(f"\n=== Seeder complete: {count} templates seeded ===")
     return 0
 

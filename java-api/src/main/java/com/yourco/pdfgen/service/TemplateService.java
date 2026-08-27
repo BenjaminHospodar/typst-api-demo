@@ -24,8 +24,4 @@ public class TemplateService {
         String schema = t.getSchema() == null || t.getSchema().isBlank() ? "{}" : t.getSchema();
         return new CachedTemplate(t.getTypSource(), schema);
     }
-
-    public String getTypSource(String form, String version) {
-        return getTemplate(form, version).typSource();
-    }
 }

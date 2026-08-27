@@ -68,9 +68,21 @@ impl typst::World for SingleSourceWorld {
 
     fn file(&self, id: FileId) -> FileResult<Bytes> {
         let rel = id.vpath().as_rootless_path();
+        if rel.components().any(|c| matches!(c, std::path::Component::ParentDir)) {
+            return Err(typst::diag::FileError::AccessDenied(rel.into()));
+        }
         if let Some(ref assets_dir) = self.assets_dir {
             let full_path = assets_dir.join(rel);
-            if let Ok(data) = std::fs::read(&full_path) {
+            let Ok(canonical) = full_path.canonicalize() else {
+                return Err(typst::diag::FileError::NotFound(rel.into()));
+            };
+            let Ok(root) = assets_dir.canonicalize() else {
+                return Err(typst::diag::FileError::NotFound(rel.into()));
+            };
+            if !canonical.starts_with(&root) {
+                return Err(typst::diag::FileError::AccessDenied(rel.into()));
+            }
+            if let Ok(data) = std::fs::read(&canonical) {
                 return Ok(Bytes::from(data));
             }
         }
