@@ -2,7 +2,7 @@
 
 This is the living iterated plan. Re-read and edit this file as you learn; do not try to land every phase in one PR.
 
-**Status:** Phases 0–4 complete. Phases 5–6 are not started. `k8s/` remains an unfinished sketch; do not treat it as a deployable chart.
+**Status:** Phases 0–6 are in-repo. Compose is the first real deploy (Proxmox LXC). Kustomize `k8s/overlays/local` and `prod` cover in-cluster Postgres/Redis/RabbitMQ, gRPC probes, NetworkPolicy, and sidecar HPA. k6 lives in `scripts/stress/`. Iterate this file as you learn; do not treat the stack as finished production.
 
 **Locked choices**
 
@@ -10,13 +10,13 @@ This is the living iterated plan. Re-read and edit this file as you learn; do no
 - **RabbitMQ first** for job/work events and application event logs (Kafka noted as a later cloud swap).
 - **Start by deleting and simplifying**, not by adding K8s.
 
-**What this repo actually is today (after Phase 2)**
+**What this repo actually is today**
 
 - Java is the HTTP API: load template from Postgres (Caffeine), validate field keys + JSON Schema `required`, call the Rust gRPC sidecar, return PDF (or 202 + poll).
 - Rust is a **stateless** gRPC compile sidecar: `Compile(job_id, template_source, inputs_json)` and `Health()` with **no Redis**. Templates bind via `sys.inputs.data`.
 - Redis remains on the Java side only (short-lived PDF cache / job status / leftover idempotency). There is no `pdf:jobs` stream and no Rust `REDIS_URL`.
 - gRPC `Health` returns `{ ok, typst_version }`. Java Actuator includes a compiler health indicator.
-- Leftover Phase 3+ files (`RabbitConfig`, `JobWorker`, `openapi/`, `k8s/`) may exist in the worktree; Rabbit auto-config is disabled (`pdfgen.rabbit.enabled: false`). Do not treat those as the compile path.
+- Rabbit is **off** in the default profile (`PDFGEN_RABBIT_ENABLED` unset / `pdfgen.rabbit.enabled: false`, in-process worker). Compose sets `PDFGEN_RABBIT_ENABLED=true` with profiles `local` and `prod`.
 
 ```mermaid
 flowchart LR
@@ -200,7 +200,15 @@ Implement these; the list after that is study-only until you want another milest
 
 ---
 
-## Phase 5 — Docker, env split, Proxmox LXC, then K8s/cloud
+## Phase 5 — Docker, env split, Proxmox LXC, then K8s/cloud (done)
+
+**Local Compose:** postgres, rabbitmq, java-api, rust-compiler, redis result cache.
+
+**Prod overlay:** [`docker-compose.prod.yml`](../docker-compose.prod.yml) — resource limits, no published DB/Rabbit ports, secrets from env, JSON logs.
+
+**Proxmox LXC:** [`docs/PROXMOX_LXC.md`](PROXMOX_LXC.md) — nesting + keyctl, Compose first, then k3s.
+
+**Kubernetes:** Kustomize [`k8s/overlays/local`](../k8s/overlays/local) and [`k8s/overlays/prod`](../k8s/overlays/prod). In-cluster Postgres/Redis/RabbitMQ, Java Actuator probes, sidecar `grpc.health.v1` probes, NetworkPolicy (only java-api → rust-compiler:50051), CPU HPA on rust-compiler. Secrets are placeholders. Do not invent AWS/Azure services until this runs on k3s.
 
 **Local:** compose with `postgres`, `rabbitmq`, `java-api`, `rust-compiler`, optional `redis` (result cache) or MinIO.
 
@@ -222,14 +230,14 @@ Implement these; the list after that is study-only until you want another milest
 
 ---
 
-## Phase 6 — Proper stress scripts
+## Phase 6 — Proper stress scripts (done)
 
-Baseline Python stress suite: [`scripts/stress_sync.py`](../scripts/stress_sync.py), [`scripts/stress_errors.py`](../scripts/stress_errors.py).
+k6 suite: [`scripts/stress/`](../scripts/stress/).
 
-- **httpx** async HTTP: sync generate, 404/400 error paths, mixed templates.
-- **Scenarios:** warmup, sustained RPS, minimal fast path (`--quick` for short local runs).
-- **Reports:** p50/p95, error rate; extend with compile_ms histogram when events land.
-- Keep [`scripts/test_functional.py`](../scripts/test_functional.py) as the smoke test; point it at OpenAPI examples.
+- **k6** HTTP: sync generate, async generate+poll, 404/400/413/422, mixed templates.
+- **Scenarios:** warmup, sustained RPS, spike, sidecar kill (circuit breaker), Rabbit flood, oversized field rejection.
+- **Reports:** k6 `http_req_duration` p50/p95/p99, error rate. Default generate SLOs: error rate < 5%, p95 < 5s, p99 < 10s.
+- Keep [`scripts/test_functional.py`](../scripts/test_functional.py) as the smoke test (OpenAPI invoice 2.0.0 example). Python `stress_sync.py` / `stress_errors.py` remain as a no-k6 fallback.
 
 ---
 
