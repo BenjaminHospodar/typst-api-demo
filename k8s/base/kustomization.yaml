@@ -1,0 +1,22 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: pdfgen
+
+resources:
+  - namespace.yaml
+  - postgres.yaml
+  - redis.yaml
+  - rabbitmq.yaml
+  - rust-compiler.yaml
+  - rust-compiler-hpa.yaml
+  - java-api.yaml
+  - network-policy.yaml
+
+configMapGenerator:
+  - name: postgres-init
+    files:
+      - init.sql=../../migrations/V1__init.sql
+
+generatorOptions:
+  disableNameSuffixHash: true
