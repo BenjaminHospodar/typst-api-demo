@@ -1,0 +1,5 @@
+# Line endings for the Gradle wrapper (java-api/)
+java-api/gradlew text eol=lf
+java-api/gradlew.bat text eol=crlf
+*.jar binary
+*.typ text eol=lf

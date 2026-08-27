@@ -2,9 +2,12 @@
 build/
 target/
 .gradle/
+__pycache__/
+*.pyc
 *.log
 *.class
 *.jar
+!**/gradle-wrapper.jar
 
 # IDE
 .idea/
@@ -18,7 +21,9 @@ Thumbs.db
 # Docker volumes
 postgres_data/
 redis_data/
+rabbitmq_data/
 
 # Environment
 .env
 .env.*
+!.env.example
