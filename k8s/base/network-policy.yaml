@@ -1,0 +1,19 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: rust-compiler-ingress
+  namespace: pdfgen
+spec:
+  podSelector:
+    matchLabels:
+      app: rust-compiler
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: java-api
+      ports:
+        - protocol: TCP
+          port: 50051
