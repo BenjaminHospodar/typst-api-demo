@@ -1,0 +1,17 @@
+{
+  "period_start": "October 1, 2016",
+  "period_end": "December 31, 2016",
+  "period_end_label": "Dec 31, 2016",
+  "base_date": "Jan 1, 2016",
+  "account_number": "5150064",
+  "account_type": "Registered Retirement Savings Plan",
+  "client_name": "JOHN D. WILSON",
+  "address_line1": "105 - 123 KING STREET",
+  "address_city": "OSHAWA ON  L1H 3Z3",
+  "ending_balance": "$51,260.78",
+  "change_in_value": "$1,832.74",
+  "ytd_change": "$2,147.45",
+  "rate_this_period": "1.10%",
+  "rate_12_months": "4.14%",
+  "rate_since_start": "4.14%"
+}

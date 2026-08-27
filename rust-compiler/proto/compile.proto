@@ -7,8 +7,9 @@ service CompileService {
 }
 
 message CompileRequest {
-  string job_id     = 1;
-  string typ_source = 2;
+  string job_id          = 1;
+  string template_source = 2;
+  string inputs_json     = 3;
 }
 
 message CompileResponse {
@@ -16,11 +17,11 @@ message CompileResponse {
   bytes  pdf_bytes  = 2;
   int32  pages      = 3;
   int32  compile_ms = 4;
+  string error      = 5;
 }
 
 message HealthRequest {}
 message HealthResponse {
-  bool   ok             = 1;
-  string typst_version  = 2;
-  int32  queue_depth    = 3;
+  bool   ok            = 1;
+  string typst_version = 2;
 }

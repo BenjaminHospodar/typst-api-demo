@@ -21,12 +21,11 @@ RUN apt-get update && apt-get install -y libssl3 ca-certificates && rm -rf /var/
 WORKDIR /app
 COPY --from=build /app/target/release/typst-compiler-svc .
 
-# Copy template assets (logo images, etc.)
 RUN mkdir -p /assets
 COPY assets/ /assets/
 
 EXPOSE 50051
-ENV WORKER_THREADS=4
 ENV RUST_LOG=info
+ENV GRPC_ADDR=0.0.0.0:50051
 ENV TYPST_ASSETS_DIR=/assets
 ENTRYPOINT ["./typst-compiler-svc"]

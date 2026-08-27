@@ -17,6 +17,8 @@
 //   text11 = Conditions subsequent / termination triggers
 //   text12 = Additional notes / special provisions
 
+#let vars = json.decode(sys.inputs.at("data", default: "{}"))
+
 #set page(paper: "a4", margin: (x: 1.8cm, y: 2cm), numbering: "1 / 4")
 #set text(size: 9pt, font: "Linux Libertine")
 #set par(justify: true, leading: 0.65em)
